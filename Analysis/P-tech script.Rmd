@@ -1,0 +1,74 @@
+---
+title: "YDSP collaboration p-tech"
+author: "Kevin Kuehn"
+date: "2/27/2020"
+output: html_document
+---
+
+Loading packaages
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+library(psych)
+library(ggplot2)
+library(corrplot) #plotting correlation matrices
+library(GPArotation) #methods for factor rotation
+library(nFactors)  #methods for determining the number of factors
+library(lavaan)  #for fitting structural equation models
+library(semPlot)  #for automatically making diagrams 
+library(foreign)
+```
+
+Reading in the data, converting data from matrix to a data frame
+
+```{r}
+data<-read.spss("~/Documents/Writing/YDSP collab/Daily Diaries.sav")
+
+data<-as.data.frame(data)
+```
+
+30 variables and 952 observations. 28 observations per person, 36 people
+
+```{r}
+data$Self_Efficacy<-as.numeric(data$Self_Efficacy)
+```
+
+```{r}
+data$Self_Efficacy<-as.numeric(data$Self_Efficacy)
+mod1<-lm(data$Self_Efficacy~data$Day)
+Self_Efficacy_resid<-residuals(mod1)
+
+mod2<-lm(data$SI~data$Day)
+SI_resid<-residuals(mod2)
+
+mod3<-lm(data$SIfreq~data$Day)
+SIfreq_resid<-residuals(mod3)
+
+mod4<-lm(data$SIDur~data$Day)
+SIDur_resid<-residuals(mod4)
+
+mod5<-lm(data$SIUrge~data$Day)
+SIUrge_resid<-residuals(mod5)
+
+data$Happy<-as.numeric(data$Happy)
+mod6<-lm(data$Happy~data$Day)
+Happy_resid<-residuals(mod6)
+
+data$Miserable<-as.numeric(data$Miserable)
+mod7<-lm(data$Miserable~data$Day)
+Miserable_resid<-residuals(mod7)
+
+data$Angry<-as.numeric(data$Angry)
+mod8<-lm(data$Angry~data$Day)
+Angry_resid<-zoo(residuals(mod8), data$Day)
+
+data$SI_Coping_TalkFamily<-as.numeric(data$SI_Coping_TalkFamily)
+mod9<-glm(data$SI_Coping_TalkFamily~data$Day)
+SI_Coping_TalkFamily_resid<-residuals(mod9)
+
+data$SI_Coping_TalkFriend<-as.numeric(data$SI_Coping_TalkFriend)
+mod10<-glm(data$SI_Coping_TalkFriend)
+SI_Coping_TalkFriend_resid<-residuals(mod10)
+
+
+```

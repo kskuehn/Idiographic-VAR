@@ -1,5 +1,5 @@
 ## Load Stacked Data
-data<-read.csv("~/full.random.R")
+data<-read.csv("~/full.random.csv")
 
 ## Split stacked data into person-specific files (saves to global environment)
 pdat_split <- split(data, data$ID)

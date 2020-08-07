@@ -1,0 +1,3880 @@
+---
+title: "Same Day VAR models predicting Coping and Self-Efficacy"
+author: "Kevin Kuehn"
+date: "06/08/2020"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    toc_depth: 3
+  theme: united
+---
+
+# Loading packages
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+
+library(psych)
+library(ggplot2)
+library(corrplot) #plotting correlation matrices
+library(GPArotation) #methods for factor rotation
+library(nFactors)  #methods for determining the number of factors
+library(lavaan)  #for fitting structural equation models
+library(semPlot)  #for automatically making diagrams 
+library(foreign)
+library(dplyr)
+library(mice)
+library(micemd)
+library(dynr)
+library(vars)
+library(tidyr)
+library(stats)
+library(base)
+library(DataCombine)
+library(zoo)
+library(ggpubr)
+library(dplyr)
+```
+
+# Reading in the data, converting data from matrix to a data frame
+
+```{r}
+data<-read.csv("~/Documents/Writing/YDSP collab/YDSP/Daily data.csv")
+data2<-read.spss("~/Documents/Writing/YDSP collab/YDSP/Baseline_variables.sav")
+
+data<-as.data.frame(data)
+```
+
+30 variables and 952 observations. 28 observations per person, 34 people (no ID 208 and 219)
+
+Each day, teens indicated whether or not they engaged in eight coping strategies in reference to suicidal ideation (“When you had thoughts of killing yourself in the last 24 hours, did you do any of these things to deal or cope with your thoughts?”) or, when suicidal ideation was not present, in reference to feelings or stressful events (“In the last 24 hours, did you do any of these things to deal or cope with your feelings or any stressful situations?). The eight coping behaviors included: (1) talked to a family member, (2) talked to a friend or another support person, (3) talked to a therapist, counselor, or doctor, (4) contacted a crisis line, (5) tried to distract self with something else, (6) tried to relax or do something comforting, (7) tried to tell self something calming or positive, and (8) tried a cognitive strategy that involved either (a) thinking about reasons for living (on days suicidal ideation was endorsed) or (b) thinking differently about the situation (on days when ideation was not endorsed). 
+
+For purposes of these analyses, we could only use participants who had invariant SI and/or who had enough data so that we could impute (> 50% of data). 
+
+This left us with 11 participants (11/34 = 55.88%). The following participants were used: 1 (ID = 201), 2 (ID=202), 4 (ID = 204), 5 (ID = 205), 6 (ID = 206), 7 (ID = 207), 8 (ID = 209), 10 (ID = 211), 11 (ID = 212), 13 (ID = 214), 16 (ID = 217), 18 (ID = 220), 20 (ID = 222), 21 (ID = 223), 23 (ID = 225), 24 (ID = 226), 27 (ID = 229), 28 (ID = 230), 31 (ID = 233), 34(ID=236).
+
+# Lagging each of the predictor variables for imputation  
+
+```{r}
+data<-slide(data=data, Var="coping_sum_3avg",TimeVar="Day",GroupVar ="ID",NewVar="coping_sum_3avg.lag",slideBy=-1)
+
+data<-slide(data=data, Var="all_coping_talkfamily",TimeVar="Day",GroupVar ="ID",NewVar="all_coping_talkfamily.lag",slideBy=-1)
+
+data<-slide(data=data, Var="all_coping_talkMH",TimeVar="Day",GroupVar ="ID",NewVar="all_coping_talkMH.lag",slideBy=-1)
+
+data<-slide(data=data, Var="all_coping_copingthought",TimeVar="Day",GroupVar ="ID",NewVar="all_coping_copingthought.lag",slideBy=-1)
+
+data<-slide(data=data, Var="all_coping_thinking",TimeVar="Day",GroupVar ="ID",NewVar="all_coping_thinking.lag",slideBy=-1)
+
+data<-slide(data=data, Var="all_coping_talkfriend",TimeVar="Day",GroupVar ="ID",NewVar="all_coping_talkfriend.lag",slideBy=-1)
+
+data<-slide(data=data, Var="all_coping_dis_rel_combined",TimeVar="Day",GroupVar ="ID",NewVar="all_coping_dis_rel_combined.lag",slideBy=-1)
+
+data<-slide(data=data, Var="all_coping_crisisline",TimeVar="Day",GroupVar ="ID",NewVar="all_coping_crisisline.lag",slideBy=-1)
+
+data<-slide(data=data, Var="coping_sum",TimeVar="Day",GroupVar ="ID",NewVar="coping_sum.lag",slideBy=-1)
+
+data<-slide(data=data, Var="all_coping_any",TimeVar="Day",GroupVar ="ID",NewVar="all_coping_any.lag",slideBy=-1)
+
+data<-slide(data=data, Var="SIUrge",TimeVar="Day",GroupVar ="ID",NewVar="SIUrge.lag",slideBy=-1)
+
+data<-slide(data=data, Var="Self_Efficacy",TimeVar="Day",GroupVar ="ID",NewVar="Self_Efficacy.lag",slideBy=-1)
+```
+
+# Splitting the data into individual data files based on ID  
+```{r}
+pdat_split <- split(data, data$ID)
+
+new_names<-as.character(c(unique(data$ID)))
+
+for(i in seq_along(pdat_split)){
+  new_names[i] <- paste0("pdat", i, sep="")
+}
+
+for (i in 1:length(pdat_split)) {
+  assign(new_names[i], pdat_split[[i]])
+}
+```
+
+# Person 202
+
+## Specifying the data structure for imputation 
+
+```{r}
+MImodel = pdat2[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+## Imputation
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(as.factor(data.impute[,1]))
+all_coping_talkMH.imp = as.factor(as.factor(data.impute[,2]))
+all_coping_copingthought.imp = as.factor(as.factor(data.impute[,3]))
+all_coping_thinking.imp = as.factor(as.factor(data.impute[,4]))
+all_coping_talkfriend.imp = as.factor(as.factor(data.impute[,5]))
+all_coping_dis_rel_combined.imp = as.factor(as.factor(data.impute[,6]))
+all_coping_crisisline.imp  = as.factor(as.factor(data.impute[,7]))
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(as.factor(data.impute[,10]))
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat2.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp, 
+                      all_coping_talkMH.imp =all_coping_talkMH.imp, 
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp = all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp, 
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines ## 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat2.1<-pdat2.imp[vars]
+pdat2.2<- do.call(rbind, apply(pdat2.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat2.3<-pdat2.imp[vars]
+pdat2.4 <- do.call(rbind, apply(pdat2.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat2.imp<-cbind(pdat2.4, pdat2.2)
+pdat2.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat2.imp<-data.frame(na.spline(pdat2.imp))
+pdat2.imp<-round(pdat2.imp)
+pdat2.imp$SIUrge.imp[pdat2.imp$SIUrge.imp>7]<-7
+pdat2.imp$SIUrge.imp[pdat2.imp$SIUrge.imp<0]<-0
+pdat2.imp$Self_Efficacy.imp[pdat2.imp$Self_Efficacy.imp>10]<-10
+pdat2.imp$Self_Efficacy.imp[pdat2.imp$Self_Efficacy.imp<0]<-0
+pdat2.imp$all_coping_talkMH.imp[pdat2.imp$all_coping_talkMH.imp==-2]<-0
+```
+
+```{r}
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+
+pdat2.imp <- pdat2.imp %>% 
+     mutate_at(c(cols),list(~recode(., `-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+pdat2.imp[cols] <- lapply(pdat2.imp[cols], factor) 
+```
+
+## Comparing pre vs post splines  
+
+```{r}
+a<-ggplot(data = pdat2, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat2.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+## Extracting Residuals ## 
+
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat2.imp)
+Coping_sum_3avg_resid = as.numeric(rstandard(mod1))
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat2.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod3<-glm(all_coping_talkMH.imp~Day, data=pdat2.imp, family=binomial(link="logit"))
+Coping_TalkMH_resid<-as.numeric(rstandard(mod3))
+
+mod4<-glm(all_coping_any.imp~Day, data=pdat2.imp, family=binomial(link="logit"))
+Coping_any_resid<-as.numeric(rstandard(mod4))
+
+mod5<-glm(all_coping_dis_rel_combined.imp~Day, data=pdat2.imp, family=binomial(link="logit"))
+Coping_dis_rel_resid<-as.numeric(rstandard(mod5))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat2.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod7<-glm(all_coping_thinking.imp~Day, data=pdat2.imp, family=binomial(link="logit"))
+Coping_Thinking_resid<-as.numeric(rstandard(mod7))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat2.imp, na.action=na.exclude)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod9<-glm(all_coping_talkfriend.imp~Day, data=pdat2.imp, family=binomial(link="logit"))
+Coping_TalkFriend_resid<-as.numeric(rstandard(mod9))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat2.imp)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat2.imp)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat2<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, Efficacy_resid, SIUrge_resid, Coping_any_resid, Coping_sum_3avg_resid))
+```
+
+## Calculating difference scores ## 
+
+```{r}
+attach(pdat2)
+Coping_TalkFamily_resid=diff(Coping_TalkFamily_resid)
+Coping_TalkMH_resid = diff(Coping_TalkMH_resid)
+Coping_dis_rel_resid = diff(Coping_dis_rel_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_TalkFriend_resid = diff(Coping_TalkFriend_resid)
+Coping_any_resid = diff(Coping_any_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid=diff(Efficacy_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+pdat2<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, Efficacy_resid, SIUrge_resid, Coping_sum_3avg_resid))
+pdat2$day<-c(1:55)
+```
+
+## Same Day models with SI Urge predicting changes in coping ## 
+
+```{r}
+pdat2.2<-c("SIUrge_resid", "Coping_sum_3avg_resid")
+pdat2.2<-pdat2[pdat2.2]
+coping_var=VAR(pdat2.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat2.2<-c("SIUrge_resid", "Coping_TalkFamily_resid")
+pdat2.2<-pdat2[pdat2.2]
+coping_var=VAR(pdat2.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat2.2<-c("Coping_TalkMH_resid", "SIUrge_resid")
+pdat2.2<-pdat2[pdat2.2]
+coping_var=VAR(pdat2.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat2.2<-c("Coping_dis_rel_resid", "SIUrge_resid")
+pdat2.2<-pdat2[pdat2.2]
+coping_var=VAR(pdat2.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat2.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat2.2<-pdat2[pdat2.2]
+coping_var=VAR(pdat2.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat2.2<-c("Coping_Thinking_resid", "SIUrge_resid")
+pdat2.2<-pdat2[pdat2.2]
+coping_var=VAR(pdat2.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat2.2<-c("Coping_TalkFriend_resid", "SIUrge_resid")
+pdat2.2<-pdat2[pdat2.2]
+coping_var=VAR(pdat2.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat2.2<-c("Coping_sum_resid", "SIUrge_resid")
+pdat2.2<-pdat2[pdat2.2]
+coping_var=VAR(pdat2.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat2.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat2.2<-pdat2[pdat2.2]
+coping_var=VAR(pdat2.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+## Plotting Self-Efficacy and SI Urge over time 
+
+```{r}
+df <- pdat2.imp %>%
+  dplyr::select(Day, SIUrge.imp, Self_Efficacy.imp) %>%
+  tidyr::gather(key = "variable", value = "value", -Day)
+
+a<-ggplot(df, aes(x = Day, y = value)) + 
+  geom_line(aes(color = variable), size = 1) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800"), name="Variable", labels=c("Efficacy", "Suicidal Urge")) + labs(y="Value") + 
+  theme_minimal()
+```
+
+# Person 204 
+
+## Specifying Data Structure
+
+```{r}
+MImodel = pdat4[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+## Imputation
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat4.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,                      
+                      all_coping_talkMH.imp =all_coping_talkMH.imp,                       
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,                    
+                      all_coping_thinking.imp = all_coping_thinking.imp,                    
+                      all_coping_talkfriend.imp = all_coping_talkfriend.imp,                      
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,            
+                      all_coping_any.imp = all_coping_any.imp,                        
+                      SIUrge.imp = SIUrge.imp,                        
+                      Self_Efficacy.imp = Self_Efficacy.imp,                       
+                      coping_sum_3avg.imp = coping_sum_3avg.imp,                       
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructing to create splines  
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat4.1<-pdat4.imp[vars]
+pdat4.2<- do.call(rbind, apply(pdat4.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat4.3<-pdat4.imp[vars]
+pdat4.4 <- do.call(rbind, apply(pdat4.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat4.imp<-cbind(pdat4.4, pdat4.2)
+pdat4.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat4.imp<-data.frame(na.spline(pdat4.imp))
+pdat4.imp<-round(pdat4.imp)
+pdat4.imp$SIUrge.imp[pdat4.imp$SIUrge.imp>7]<-7
+pdat4.imp$SIUrge.imp[pdat4.imp$SIUrge.imp<0]<-0
+pdat4.imp$Self_Efficacy.imp[pdat4.imp$Self_Efficacy.imp>10]<-10
+pdat4.imp$Self_Efficacy.imp[pdat4.imp$Self_Efficacy.imp<0]<-0
+```
+
+
+```{r}
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+
+pdat4.imp <- pdat4.imp %>% 
+     mutate_at(c(cols),list(~recode(., `-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+pdat4.imp[cols] <- lapply(pdat4.imp[cols], factor) 
+```
+
+
+## Comparing pre vs post splines 
+
+```{r}
+a<-ggplot(data = pdat4, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat4.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+## Extracting Residuals
+
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat4.imp)
+Coping_sum_3avg_resid=rstandard(mod1)
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat4.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod3<-glm(all_coping_talkMH.imp~Day, data=pdat4.imp, family=binomial(link="logit"))
+Coping_TalkMH_resid<-as.numeric(rstandard(mod3))
+
+mod4<-glm(all_coping_any.imp~Day, data=pdat4.imp, family=binomial(link="logit"))
+Coping_any_resid<-as.numeric(rstandard(mod4))
+
+mod5<-glm(all_coping_dis_rel_combined.imp~Day, data=pdat4.imp, family=binomial(link="logit"))
+Coping_dis_rel_resid<-as.numeric(rstandard(mod5))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat4.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod7<-glm(all_coping_thinking.imp~Day, data=pdat4.imp, family=binomial(link="logit"))
+Coping_Thinking_resid<-as.numeric(rstandard(mod7))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat4.imp)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod9<-glm(all_coping_talkfriend.imp~Day, data=pdat4.imp, family=binomial(link="logit"))
+Coping_TalkFriend_resid<-as.numeric(rstandard(mod9))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat4.imp, na.action=na.exclude)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat4.imp, na.action=na.exclude)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat4<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, Efficacy_resid, SIUrge_resid, Coping_sum_3avg_resid))
+```
+
+## Calculating Difference Scores ## 
+
+```{r}
+attach(pdat4)
+Coping_TalkFamily_resid=diff(Coping_TalkFamily_resid)
+Coping_TalkMH_resid = diff(Coping_TalkMH_resid)
+Coping_dis_rel_resid = diff(Coping_dis_rel_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_TalkFriend_resid = diff(Coping_TalkFriend_resid)
+Coping_any_resid = diff(Coping_any_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid =  diff(Efficacy_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+pdat4<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, Efficacy_resid, SIUrge_resid, Coping_sum_3avg_resid))
+pdat4$day<-c(1:55)
+```
+
+## Same Day models with SI Urge Predicting Changes in Coping 
+
+```{r}
+pdat4.2<-c("Coping_sum_3avg_resid", "SIUrge_resid")
+pdat4.2<-pdat4[pdat4.2]
+coping_var=VAR(pdat4.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat4.2<-c("Coping_TalkFamily_resid", "SIUrge_resid")
+pdat4.2<-pdat4[pdat4.2]
+coping_var=VAR(pdat4.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat4.2<-c("Coping_TalkMH_resid", "SIUrge_resid")
+pdat4.2<-pdat4[pdat4.2]
+coping_var=VAR(pdat4.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat4.2<-c("Coping_dis_rel_resid", "SIUrge_resid")
+pdat4.2<-pdat4[pdat4.2]
+coping_var=VAR(pdat4.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat4.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat4.2<-pdat4[pdat4.2]
+coping_var=VAR(pdat4.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat4.2<-c("Coping_Thinking_resid", "SIUrge_resid")
+pdat4.2<-pdat4[pdat4.2]
+coping_var=VAR(pdat4.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat4.2<-c("Coping_TalkFriend_resid", "SIUrge_resid")
+pdat4.2<-pdat4[pdat4.2]
+coping_var=VAR(pdat4.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat4.2<-c("Coping_sum_resid", "SIUrge_resid")
+pdat4.2<-pdat4[pdat4.2]
+coping_var=VAR(pdat4.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat4.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat4.2<-pdat4[pdat4.2]
+coping_var=VAR(pdat4.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+## Plotting SI Urge and the 3 day coping diversity variable over time ## 
+
+```{r}
+df <- pdat4.imp %>%
+  dplyr::select(Day, SIUrge.imp, coping_sum_3avg.imp) %>%
+  tidyr::gather(key = "variable", value = "value", -Day)
+
+ggplot(df, aes(x = Day, y = value)) + 
+  geom_line(aes(color = variable), size = 1) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+  theme_minimal()
+```
+
+# 205
+
+## Specifying the data structure 
+
+```{r}
+MImodel = pdat5[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+## Imputation ## 
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat5.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                               all_coping_talkMH.imp =all_coping_talkMH.imp,
+                               all_coping_copingthought.imp = all_coping_copingthought.imp,
+                               all_coping_thinking.imp = all_coping_thinking.imp,
+                               all_coping_talkfriend.imp = all_coping_talkfriend.imp,
+                               all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                               all_coping_any.imp = all_coping_any.imp, 
+                               SIUrge.imp = SIUrge.imp, 
+                               Self_Efficacy.imp = Self_Efficacy.imp,
+                               coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                               coping_sum.imp = coping_sum.imp, 
+                               all_coping_any.imp = all_coping_any.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat5.1<-pdat5.imp[vars]
+pdat5.2<- do.call(rbind, apply(pdat5.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat5.3<-pdat5.imp[vars]
+pdat5.4 <- do.call(rbind, apply(pdat5.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat5.imp<-cbind(pdat5.4, pdat5.2)
+pdat5.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat5.imp<-data.frame(na.spline(pdat5.imp))
+pdat5.imp<-round(pdat5.imp)
+pdat5.imp$SIUrge.imp[pdat5.imp$SIUrge.imp>7]<-7
+pdat5.imp$SIUrge.imp[pdat5.imp$SIUrge.imp<0]<-0
+pdat5.imp$Self_Efficacy.imp[pdat5.imp$Self_Efficacy.imp>10]<-10
+pdat5.imp$Self_Efficacy.imp[pdat5.imp$Self_Efficacy.imp<0]<-0
+```
+
+
+```{r}
+pdat5.imp <- pdat5.imp %>% 
+     mutate_at(c(cols),list(~recode(., `-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+pdat5.imp[cols] <- lapply(pdat5.imp[cols], factor) 
+```
+
+## Comparing pre vs post splines  
+
+```{r}
+a<-ggplot(data = pdat5, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat5.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+## Extracting residuals 
+
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat5.imp)
+Coping_sum_3avg_resid=as.numeric(rstandard(mod1))
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat5.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod3<-glm(all_coping_talkMH.imp~Day, data=pdat5.imp, family=binomial(link="logit"))
+Coping_TalkMH_resid<-as.numeric(rstandard(mod3))
+
+mod4<-glm(all_coping_any.imp~Day, data=pdat5.imp, family=binomial(link="logit"))
+Coping_any_resid<-as.numeric(rstandard(mod4))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat5.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat5.imp, na.action=na.exclude)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod9<-glm(all_coping_talkfriend.imp~Day, data=pdat5.imp, family=binomial(link="logit"))
+Coping_TalkFriend_resid<-as.numeric(rstandard(mod9))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat5.imp, na.action=na.exclude)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat5.imp, na.action=na.exclude)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat5<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, Efficacy_resid, SIUrge_resid, Coping_any_resid, Coping_sum_3avg_resid))
+```
+
+## Person 5: Calculating Difference Scores ## 
+
+```{r}
+attach(pdat5)
+Coping_TalkFamily_resid=diff(Coping_TalkFamily_resid)
+Coping_TalkMH_resid = diff(Coping_TalkMH_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_TalkFriend_resid = diff(Coping_TalkFriend_resid)
+Coping_any_resid = diff(Coping_any_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid =  diff(Efficacy_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+
+pdat5<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, Efficacy_resid, SIUrge_resid, Coping_sum_3avg_resid))
+pdat5$day<-c(1:55)
+```
+
+## Person 5: Same Days models with SI Urge Predicting Changes in Coping ## 
+
+```{r}
+pdat5.2<-c("Coping_TalkFamily_resid", "SIUrge_resid")
+pdat5.2<-pdat5[pdat5.2]
+coping_var=VAR(pdat5.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat5.2<-c("Coping_TalkMH_resid", "SIUrge_resid")
+pdat5.2<-pdat5[pdat5.2]
+coping_var=VAR(pdat5.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat5.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat5.2<-pdat5[pdat5.2]
+coping_var=VAR(pdat5.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat5.2<-c("Coping_TalkFriend_resid", "SIUrge_resid")
+pdat5.2<-pdat5[pdat5.2]
+coping_var=VAR(pdat5.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat5.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat5.2<-pdat5[pdat5.2]
+coping_var=VAR(pdat5.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+# 207
+
+## Specifying the data structure for impuation
+
+```{r}
+MImodel = pdat7[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+## Imputation 
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat7.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat7.1<-pdat7.imp[vars]
+pdat7.2<- do.call(rbind, apply(pdat7.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA,
+        all_coping_crisisline.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp",
+        "all_coping_crisisline.imp")
+pdat7.3<-pdat7.imp[vars]
+pdat7.4 <- do.call(rbind, apply(pdat7.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat7.imp<-cbind(pdat7.4, pdat7.2)
+pdat7.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat7.imp<-data.frame(na.spline(pdat7.imp))
+pdat7.imp<-round(pdat7.imp)
+pdat7.imp$SIUrge.imp[pdat7.imp$SIUrge.imp>7]<-7
+pdat7.imp$SIUrge.imp[pdat7.imp$SIUrge.imp<0]<-0
+pdat7.imp$Self_Efficacy.imp[pdat7.imp$Self_Efficacy.imp>10]<-10
+pdat7.imp$Self_Efficacy.imp[pdat7.imp$Self_Efficacy.imp<0]<-0
+```
+
+
+```{r}
+pdat7.imp <- pdat7.imp %>% 
+     mutate_at(c(cols),list(~recode(., `-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_crisisline.imp", 
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+pdat7.imp[cols] <- lapply(pdat7.imp[cols], factor) 
+```
+
+
+## Comparing pre vs post splines  
+
+```{r}
+a<-ggplot(data = pdat7, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat7.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+## Extracting residuals
+
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat7.imp)
+Coping_sum_3avg_resid = as.numeric(rstandard(mod1))
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat7.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod3<-glm(all_coping_talkMH.imp~Day, data=pdat7.imp, family=binomial(link="logit"))
+Coping_TalkMH_resid<-as.numeric(rstandard(mod3))
+
+mod4<-glm(all_coping_crisisline.imp~Day, data=pdat7.imp, family=binomial(link="logit"))
+Coping_crisisline_resid<-as.numeric(rstandard(mod4))
+
+mod5<-glm(all_coping_dis_rel_combined.imp~Day, data=pdat7.imp, family=binomial(link="logit"))
+Coping_dis_rel_resid<-as.numeric(rstandard(mod5))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat7.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod7<-glm(all_coping_thinking.imp~Day, data=pdat7.imp, family=binomial(link="logit"))
+Coping_Thinking_resid<-as.numeric(rstandard(mod7))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat7.imp)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod9<-glm(all_coping_talkfriend.imp~Day, data=pdat7.imp, family=binomial(link="logit"))
+Coping_TalkFriend_resid<-as.numeric(rstandard(mod9))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat7.imp)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat7.imp)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat7<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_crisisline_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+```
+
+## Calculating Difference Scores  
+
+```{r}
+attach(pdat7)
+Coping_TalkFamily_resid = diff(Coping_TalkFamily_resid)
+Coping_TalkMH_resid = diff(Coping_TalkMH_resid)
+Coping_dis_rel_resid = diff(Coping_dis_rel_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_TalkFriend_resid = diff(Coping_TalkFriend_resid)
+Coping_crisisline_resid = diff(Coping_crisisline_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid =  diff(Efficacy_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+pdat7<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid, Coping_crisisline_resid))
+pdat7$day<-c(1:55)
+```
+
+## Person 7: Same Day models with SI Urge Predicting Changes in Coping ## 
+
+```{r}
+pdat7.2<-c("Coping_TalkFamily_resid", "SIUrge_resid")
+pdat7.2<-pdat7[pdat7.2]
+coping_var=VAR(pdat7.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat7.2<-c("Coping_TalkMH_resid", "SIUrge_resid")
+pdat7.2<-pdat7[pdat7.2]
+coping_var=VAR(pdat7.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat7.2<-c("Coping_dis_rel_resid", "SIUrge_resid")
+pdat7.2<-pdat7[pdat7.2]
+coping_var=VAR(pdat7.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat7.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat7.2<-pdat7[pdat7.2]
+coping_var=VAR(pdat7.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat7.2<-c("Coping_Thinking_resid", "SIUrge_resid")
+pdat7.2<-pdat7[pdat7.2]
+coping_var=VAR(pdat7.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat7.2<-c("Coping_TalkFriend_resid", "SIUrge_resid")
+pdat7.2<-pdat7[pdat7.2]
+coping_var=VAR(pdat7.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat7.2<-c("Coping_sum_resid", "SIUrge_resid")
+pdat7.2<-pdat7[pdat7.2]
+coping_var=VAR(pdat7.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat7.2<-c("Coping_crisisline_resid", "SIUrge_resid")
+pdat7.2<-pdat7[pdat7.2]
+coping_var=VAR(pdat7.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat7.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat7.2<-pdat7[pdat7.2]
+coping_var=VAR(pdat7.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+# 212
+
+## Specifying the data structure for imputation
+
+```{r}
+MImodel = pdat11[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+## Imputation 
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat11.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat11.1<-pdat11.imp[vars]
+pdat11.2<- do.call(rbind, apply(pdat11.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat11.3<-pdat11.imp[vars]
+pdat11.4 <- do.call(rbind, apply(pdat11.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat11.imp<-cbind(pdat11.4, pdat11.2)
+pdat11.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat11.imp<-data.frame(na.spline(pdat11.imp))
+pdat11.imp<-round(pdat11.imp)
+pdat11.imp$SIUrge.imp[pdat11.imp$SIUrge.imp>7]<-7
+pdat11.imp$SIUrge.imp[pdat11.imp$SIUrge.imp<0]<-0
+pdat11.imp$Self_Efficacy.imp[pdat11.imp$Self_Efficacy.imp>10]<-10
+pdat11.imp$Self_Efficacy.imp[pdat11.imp$Self_Efficacy.imp<0]<-0
+```
+
+
+```{r}
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+
+pdat11.imp <- pdat11.imp %>% 
+     mutate_at(c(cols),list(~recode(., `-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+pdat11.imp[cols] <- lapply(pdat11.imp[cols], factor) 
+```
+
+
+## Comparing pre vs post splines  
+
+```{r}
+a<-ggplot(data = pdat11, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat11.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat11.imp)
+Coping_sum_3avg_resid = as.numeric(rstandard(mod1))
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat11.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod5<-glm(all_coping_dis_rel_combined.imp~Day, data=pdat11.imp, family=binomial(link="logit"))
+Coping_dis_rel_resid<-as.numeric(rstandard(mod5))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat11.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod7<-glm(all_coping_thinking.imp~Day, data=pdat11.imp, family=binomial(link="logit"))
+Coping_Thinking_resid<-as.numeric(rstandard(mod7))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat11.imp)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod9<-glm(all_coping_talkfriend.imp~Day, data=pdat11.imp, family=binomial(link="logit"))
+Coping_TalkFriend_resid<-as.numeric(rstandard(mod9))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat11.imp)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat11.imp)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat11<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_any_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+```
+
+## Person 11: Calculating the difference scores ## 
+
+```{r}
+attach(pdat11)
+Coping_TalkFamily_resid=diff(Coping_TalkFamily_resid)
+Coping_dis_rel_resid = diff(Coping_dis_rel_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_TalkFriend_resid = diff(Coping_TalkFriend_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid =  diff(Efficacy_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+pdat11<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+pdat11$day<-c(1:55)
+```
+
+## Person 11: Same Day models with SI Urge Predicting Changes in Coping ##  
+
+```{r}
+pdat11.2<-c("Coping_sum_3avg_resid", "SIUrge_resid")
+pdat11.2<-pdat11[pdat11.2]
+coping_var=VAR(pdat11.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat11.2<-c("Coping_TalkFamily_resid", "SIUrge_resid")
+pdat11.2<-pdat11[pdat11.2]
+coping_var=VAR(pdat11.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat11.2<-c("Coping_dis_rel_resid", "SIUrge_resid")
+pdat11.2<-pdat11[pdat11.2]
+coping_var=VAR(pdat11.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat11.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat11.2<-pdat11[pdat11.2]
+coping_var=VAR(pdat11.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat11.2<-c("Coping_Thinking_resid", "SIUrge_resid")
+pdat11.2<-pdat11[pdat11.2]
+coping_var=VAR(pdat11.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat11.2<-c("Coping_TalkFriend_resid", "SIUrge_resid")
+pdat11.2<-pdat11[pdat11.2]
+coping_var=VAR(pdat11.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat11.2<-c("Coping_sum_resid", "SIUrge_resid")
+pdat11.2<-pdat11[pdat11.2]
+coping_var=VAR(pdat11.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat11.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat11.2<-pdat11[pdat11.2]
+coping_var=VAR(pdat11.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+# 214
+## Specifying data structure for imputation 
+
+```{r}
+MImodel = pdat13[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+## Person 13: Imputation ## 
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat13.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat13.1<-pdat13.imp[vars]
+pdat13.2<- do.call(rbind, apply(pdat13.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat13.3<-pdat13.imp[vars]
+pdat13.4 <- do.call(rbind, apply(pdat13.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat13.imp<-cbind(pdat13.4, pdat13.2)
+pdat13.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat13.imp<-data.frame(na.spline(pdat13.imp))
+pdat13.imp<-round(pdat13.imp)
+pdat13.imp$SIUrge.imp[pdat13.imp$SIUrge.imp>7]<-7
+pdat13.imp$SIUrge.imp[pdat13.imp$SIUrge.imp<0]<-0
+pdat13.imp$Self_Efficacy.imp[pdat13.imp$Self_Efficacy.imp>10]<-10
+pdat13.imp$Self_Efficacy.imp[pdat13.imp$Self_Efficacy.imp<0]<-0
+```
+
+
+```{r}
+pdat13.imp <- pdat13.imp %>% 
+     mutate_at(c(cols),list(~recode(., `-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+pdat13.imp[cols] <- lapply(pdat13.imp[cols], factor) 
+```
+
+## Comparing pre vs post splines  
+
+```{r}
+a<-ggplot(data = pdat13, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat13.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+## Extracting residuals
+
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat13.imp)
+Coping_sum_3avg_resid = as.numeric(rstandard(mod1))
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat13.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod3<-glm(all_coping_talkMH.imp~Day, data=pdat13.imp, family=binomial(link="logit"))
+Coping_TalkMH_resid<-as.numeric(rstandard(mod3))
+
+mod5<-glm(all_coping_dis_rel_combined.imp~Day, data=pdat13.imp, family=binomial(link="logit"))
+Coping_dis_rel_resid<-as.numeric(rstandard(mod5))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat13.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod7<-glm(all_coping_thinking.imp~Day, data=pdat13.imp, family=binomial(link="logit"))
+Coping_Thinking_resid<-as.numeric(rstandard(mod7))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat13.imp)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod9<-glm(all_coping_talkfriend.imp~Day, data=pdat13.imp, family=binomial(link="logit"))
+Coping_TalkFriend_resid<-as.numeric(rstandard(mod9))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat13.imp)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat13.imp)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat13<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+```
+
+## Person 13: Calculating Difference Scores ## 
+
+```{r}
+attach(pdat13)
+Coping_TalkFamily_resid = diff(Coping_TalkFamily_resid)
+Coping_TalkMH_resid = diff(Coping_TalkMH_resid)
+Coping_dis_rel_resid = diff(Coping_dis_rel_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_TalkFriend_resid = diff(Coping_TalkFriend_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid =  diff(Efficacy_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+pdat13<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+
+pdat13$day<-c(1:55)
+```
+
+## Person 13: Same Day Models with SI Urge Predicting Changes in Coping ##  
+
+```{r}
+pdat13.2<-c("Coping_sum_3avg_resid", "SIUrge_resid")
+pdat13.2<-pdat13[pdat13.2]
+coping_var=VAR(pdat13.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat13.2<-c("Coping_TalkFamily_resid", "SIUrge_resid")
+pdat13.2<-pdat13[pdat13.2]
+coping_var=VAR(pdat13.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat13.2<-c("Coping_TalkMH_resid", "SIUrge_resid")
+pdat13.2<-pdat13[pdat13.2]
+coping_var=VAR(pdat13.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat13.2<-c("Coping_dis_rel_resid", "SIUrge_resid")
+pdat13.2<-pdat13[pdat13.2]
+coping_var=VAR(pdat13.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat13.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat13.2<-pdat13[pdat13.2]
+coping_var=VAR(pdat13.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat13.2<-c("Coping_Thinking_resid", "SIUrge_resid")
+pdat13.2<-pdat13[pdat13.2]
+coping_var=VAR(pdat13.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat13.2<-c("Coping_TalkFriend_resid", "SIUrge_resid")
+pdat13.2<-pdat13[pdat13.2]
+coping_var=VAR(pdat13.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat13.2<-c("Coping_sum_resid", "SIUrge_resid")
+pdat13.2<-pdat13[pdat13.2]
+coping_var=VAR(pdat13.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat13.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat13.2<-pdat13[pdat13.2]
+coping_var=VAR(pdat13.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+# Person 222
+
+## Specifying the data structure for imputation
+
+```{r}
+MImodel = pdat20[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+## Person 20: Imputation ## 
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat20.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat20.1<-pdat20.imp[vars]
+pdat20.2<- do.call(rbind, apply(pdat20.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat20.3<-pdat20.imp[vars]
+pdat20.4 <- do.call(rbind, apply(pdat20.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat20.imp<-cbind(pdat20.4, pdat20.2)
+pdat20.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat20.imp<-data.frame(na.spline(pdat20.imp))
+pdat20.imp<-round(pdat20.imp)
+pdat20.imp$SIUrge.imp[pdat20.imp$SIUrge.imp>7]<-7
+pdat20.imp$SIUrge.imp[pdat20.imp$SIUrge.imp<0]<-0
+pdat20.imp$Self_Efficacy.imp[pdat20.imp$Self_Efficacy.imp>10]<-10
+pdat20.imp$Self_Efficacy.imp[pdat20.imp$Self_Efficacy.imp<0]<-0
+```
+
+
+```{r}
+pdat20.imp <- pdat20.imp %>% 
+     mutate_at(c(cols),list(~recode(., `-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+pdat20.imp[cols] <- lapply(pdat20.imp[cols], factor) 
+
+```
+
+## Comparing pre vs post splines  
+
+```{r}
+a<-ggplot(data = pdat20, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat20.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+# Extracting standardized residuals 
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat20.imp)
+Coping_sum_3avg_resid = as.numeric(rstandard(mod1))
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat20.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod3<-glm(all_coping_talkMH.imp~Day, data=pdat20.imp, family=binomial(link="logit"))
+Coping_TalkMH_resid<-as.numeric(rstandard(mod3))
+
+mod5<-glm(all_coping_dis_rel_combined.imp~Day, data=pdat20.imp, family=binomial(link="logit"))
+Coping_dis_rel_resid<-as.numeric(rstandard(mod5))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat20.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod7<-glm(all_coping_thinking.imp~Day, data=pdat20.imp, family=binomial(link="logit"))
+Coping_Thinking_resid<-as.numeric(rstandard(mod7))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat20.imp)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod9<-glm(all_coping_talkfriend.imp~Day, data=pdat20.imp, family=binomial(link="logit"))
+Coping_TalkFriend_resid<-as.numeric(rstandard(mod9))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat20.imp)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat20.imp)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat20<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+```
+
+```{r}
+attach(pdat20)
+Coping_TalkFamily_resid=diff(Coping_TalkFamily_resid)
+Coping_TalkMH_resid = diff(Coping_TalkMH_resid)
+Coping_dis_rel_resid = diff(Coping_dis_rel_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_TalkFriend_resid = diff(Coping_TalkFriend_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid =  diff(Efficacy_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+pdat20<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+pdat20$day<-c(1:55)
+```
+
+```{r}
+df <- pdat20.imp %>%
+  dplyr::select(Day, coping_sum.imp, SIUrge.imp) %>%
+  tidyr::gather(key = "variable", value = "value", -Day)
+
+a<-ggplot(df, aes(x = Day, y = value)) + 
+  geom_line(aes(linetype = variable), size = 1) + labs(y="Value", x = "Day of Study") + theme_bw()
+a<-a+scale_linetype_manual(values=c("solid", "dashed"), name="Variable", labels=c("Suicidal Urge", "Sum of Coping Strategies"))
+
+jpeg("Person 20.SUM.jpeg", res=300, height=6, width=9, units="in")
+a
+dev.off()
+```
+
+## Person 20: Same Day Models with SI Urge Predicting Coping ## 
+
+```{r}
+pdat20.2<-c("Coping_sum_3avg_resid", "SIUrge_resid")
+pdat20.2<-pdat20[pdat20.2]
+coping_var=VAR(pdat20.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat20.2<-c("Coping_TalkFamily_resid", "SIUrge_resid")
+pdat20.2<-pdat20[pdat20.2]
+coping_var=VAR(pdat20.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat20.2<-c("Coping_TalkMH_resid", "SIUrge_resid")
+pdat20.2<-pdat20[pdat20.2]
+coping_var=VAR(pdat20.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat20.2<-c("Coping_dis_rel_resid", "SIUrge_resid")
+pdat20.2<-pdat20[pdat20.2]
+coping_var=VAR(pdat20.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat20.2<-c("Coping_Thinking_resid", "SIUrge_resid")
+pdat20.2<-pdat20[pdat20.2]
+coping_var=VAR(pdat20.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat20.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat20.2<-pdat20[pdat20.2]
+coping_var=VAR(pdat20.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat20.2<-c("Coping_TalkFriend_resid", "SIUrge_resid")
+pdat20.2<-pdat20[pdat20.2]
+coping_var=VAR(pdat20.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat20.2<-c("Coping_sum_resid", "SIUrge_resid")
+pdat20.2<-pdat20[pdat20.2]
+coping_var=VAR(pdat20.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat20.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat20.2<-pdat20[pdat20.2]
+coping_var=VAR(pdat20.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+# Person 223
+
+## Specifying the data structure for imputation
+
+```{r}
+MImodel = pdat21[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+## Imputation 
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(as.factor(data.impute[,10]))
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat21.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat21.1<-pdat21.imp[vars]
+pdat21.2<- do.call(rbind, apply(pdat21.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat21.3<-pdat21.imp[vars]
+pdat21.4 <- do.call(rbind, apply(pdat21.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat21.imp<-cbind(pdat21.4, pdat21.2)
+pdat21.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat21.imp<-data.frame(na.spline(pdat21.imp))
+pdat21.imp<-round(pdat21.imp)
+pdat21.imp$SIUrge.imp[pdat21.imp$SIUrge.imp>7]<-7
+pdat21.imp$SIUrge.imp[pdat21.imp$SIUrge.imp<0]<-0
+pdat21.imp$Self_Efficacy.imp[pdat21.imp$Self_Efficacy.imp>10]<-10
+pdat21.imp$Self_Efficacy.imp[pdat21.imp$Self_Efficacy.imp<0]<-0
+```
+
+
+```{r}
+pdat21.imp <- pdat21.imp %>% 
+     mutate_at(c(cols),list(~recode(., `-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+pdat21.imp[cols] <- lapply(pdat21.imp[cols], factor) 
+```
+
+## Comparing pre vs post splines  
+
+```{r}
+a<-ggplot(data = pdat21, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat21.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+## Extracting standardized residuals 
+
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat21.imp)
+Coping_sum_3avg_resid = as.numeric(rstandard(mod1))
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat21.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod3<-glm(all_coping_talkMH.imp~Day, data=pdat21.imp, family=binomial(link="logit"))
+Coping_TalkMH_resid<-as.numeric(rstandard(mod3))
+
+mod5<-glm(all_coping_dis_rel_combined.imp~Day, data=pdat21.imp, family=binomial(link="logit"))
+Coping_dis_rel_resid<-as.numeric(rstandard(mod5))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat21.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod7<-glm(all_coping_thinking.imp~Day, data=pdat21.imp, family=binomial(link="logit"))
+Coping_Thinking_resid<-as.numeric(rstandard(mod7))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat21.imp)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod9<-glm(all_coping_talkfriend.imp~Day, data=pdat21.imp, family=binomial(link="logit"))
+Coping_TalkFriend_resid<-as.numeric(rstandard(mod9))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat21.imp)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat21.imp)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat21<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid,Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+```
+
+## Person 21: Calculating Difference Scores ##
+```{r}
+attach(pdat21)
+Coping_TalkFamily_resid=diff(Coping_TalkFamily_resid)
+Coping_TalkMH_resid = diff(Coping_TalkMH_resid)
+Coping_dis_rel_resid = diff(Coping_dis_rel_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_TalkFriend_resid = diff(Coping_TalkFriend_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid =  diff(Efficacy_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+pdat21<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid,Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+pdat21$day<-c(1:55)
+```
+
+## Person 21: Same Day Models with SI Urge Predicting Coping ##  
+
+```{r}
+pdat21.2<-c("Coping_sum_3avg_resid", "SIUrge_resid")
+pdat21.2<-pdat21[pdat21.2]
+coping_var=VAR(pdat21.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat21.2<-c("Coping_TalkFamily_resid", "SIUrge_resid")
+pdat21.2<-pdat21[pdat21.2]
+coping_var=VAR(pdat21.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat21.2<-c("Coping_TalkMH_resid", "SIUrge_resid")
+pdat21.2<-pdat21[pdat21.2]
+coping_var=VAR(pdat21.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat21.2<-c("Coping_dis_rel_resid", "SIUrge_resid")
+pdat21.2<-pdat21[pdat21.2]
+coping_var=VAR(pdat21.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat21.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat21.2<-pdat21[pdat21.2]
+coping_var=VAR(pdat21.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat21.2<-c("Coping_Thinking_resid", "SIUrge_resid")
+pdat21.2<-pdat21[pdat21.2]
+coping_var=VAR(pdat21.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat21.2<-c("Coping_TalkFriend_resid", "SIUrge_resid")
+pdat21.2<-pdat21[pdat21.2]
+coping_var=VAR(pdat21.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat21.2<-c("Coping_sum_resid", "SIUrge_resid")
+pdat21.2<-pdat21[pdat21.2]
+coping_var=VAR(pdat21.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat21.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat21.2<-pdat21[pdat21.2]
+coping_var=VAR(pdat21.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+# Person 225
+
+## Specifying the data structure for imputation
+
+```{r}
+MImodel = pdat23[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+## Imputation  
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat23.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat23.1<-pdat23.imp[vars]
+pdat23.2<- do.call(rbind, apply(pdat23.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat23.3<-pdat23.imp[vars]
+pdat23.4 <- do.call(rbind, apply(pdat23.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat23.imp<-cbind(pdat23.4, pdat23.2)
+pdat23.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat23.imp<-data.frame(na.spline(pdat23.imp))
+pdat23.imp<-round(pdat23.imp)
+pdat23.imp$SIUrge.imp[pdat23.imp$SIUrge.imp>7]<-7
+pdat23.imp$SIUrge.imp[pdat23.imp$SIUrge.imp<0]<-0
+pdat23.imp$Self_Efficacy.imp[pdat23.imp$Self_Efficacy.imp>10]<-10
+pdat23.imp$Self_Efficacy.imp[pdat23.imp$Self_Efficacy.imp<0]<-0
+```
+
+
+```{r}
+pdat23.imp <- pdat23.imp %>% 
+     mutate_at(c(cols),list(~recode(., `4`= 0,`-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+pdat23.imp[cols] <- lapply(pdat23.imp[cols], factor) 
+```
+
+## Comparing pre vs post splines  
+
+```{r}
+a<-ggplot(data = pdat23, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat23.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+#Extracting standardized residuals
+
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat23.imp)
+Coping_sum_3avg_resid = as.numeric(rstandard(mod1))
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat23.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod3<-glm(all_coping_talkMH.imp~Day, data=pdat23.imp, family=binomial(link="logit"))
+Coping_TalkMH_resid<-as.numeric(rstandard(mod3))
+
+mod5<-glm(all_coping_dis_rel_combined.imp~Day, data=pdat23.imp, family=binomial(link="logit"))
+Coping_dis_rel_resid<-as.numeric(rstandard(mod5))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat23.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod7<-glm(all_coping_thinking.imp~Day, data=pdat23.imp, family=binomial(link="logit"))
+Coping_Thinking_resid<-as.numeric(rstandard(mod7))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat23.imp)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod9<-glm(all_coping_talkfriend.imp~Day, data=pdat23.imp, family=binomial(link="logit"))
+Coping_TalkFriend_resid<-as.numeric(rstandard(mod9))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat23.imp)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat23.imp)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat23<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+```
+
+## Person 23: Calculating Difference Scores ## 
+
+```{r}
+attach(pdat23)
+Coping_TalkFamily_resid=diff(Coping_TalkFamily_resid)
+Coping_TalkMH_resid = diff(Coping_TalkMH_resid)
+Coping_dis_rel_resid = diff(Coping_dis_rel_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_TalkFriend_resid = diff(Coping_TalkFriend_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid =  diff(Efficacy_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+pdat23<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+pdat23$day<-c(1:55)
+```
+
+## Person 23: Same Day Models with SI Urge Predicting Coping ##  
+
+```{r}
+pdat23.2<-c("Coping_sum_3avg_resid", "SIUrge_resid")
+pdat23.2<-pdat23[pdat23.2]
+coping_var=VAR(pdat23.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat23.2<-c("Coping_TalkFamily_resid", "SIUrge_resid")
+pdat23.2<-pdat23[pdat23.2]
+coping_var=VAR(pdat23.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat23.2<-c("Coping_TalkMH_resid", "SIUrge_resid")
+pdat23.2<-pdat23[pdat23.2]
+coping_var=VAR(pdat23.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat23.2<-c("Coping_dis_rel_resid", "SIUrge_resid")
+pdat23.2<-pdat23[pdat23.2]
+coping_var=VAR(pdat23.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat23.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat23.2<-pdat23[pdat23.2]
+coping_var=VAR(pdat23.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat23.2<-c("Coping_Thinking_resid", "SIUrge_resid")
+pdat23.2<-pdat23[pdat23.2]
+coping_var=VAR(pdat23.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat23.2<-c("Coping_TalkFriend_resid", "SIUrge_resid")
+pdat23.2<-pdat23[pdat23.2]
+coping_var=VAR(pdat23.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat23.2<-c("Coping_sum_resid", "SIUrge_resid")
+pdat23.2<-pdat23[pdat23.2]
+coping_var=VAR(pdat23.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat23.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat23.2<-pdat23[pdat23.2]
+coping_var=VAR(pdat23.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+# 230
+
+## Specifying the Data Structure for imputation 
+
+```{r}
+MImodel = pdat28[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+## Person 28: Imputation ## 
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat28.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat28.1<-pdat28.imp[vars]
+pdat28.2<- do.call(rbind, apply(pdat28.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat28.3<-pdat28.imp[vars]
+pdat28.4 <- do.call(rbind, apply(pdat28.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat28.imp<-cbind(pdat28.4, pdat28.2)
+pdat28.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat28.imp<-data.frame(na.spline(pdat28.imp))
+pdat28.imp<-round(pdat28.imp)
+pdat28.imp$SIUrge.imp[pdat28.imp$SIUrge.imp>7]<-7
+pdat28.imp$SIUrge.imp[pdat28.imp$SIUrge.imp<0]<-0
+pdat28.imp$Self_Efficacy.imp[pdat28.imp$Self_Efficacy.imp>10]<-10
+pdat28.imp$Self_Efficacy.imp[pdat28.imp$Self_Efficacy.imp<0]<-0
+```
+
+
+```{r}
+pdat28.imp <- pdat28.imp %>% 
+     mutate_at(c(cols),list(~recode(., `-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+pdat28.imp[cols] <- lapply(pdat28.imp[cols], factor) 
+```
+
+## Comparing pre vs post splines  
+
+```{r}
+a<-ggplot(data = pdat28, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat28.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+## Extracting standardized residuals
+
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat28.imp)
+Coping_sum_3avg_resid = as.numeric(rstandard(mod1))
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat28.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod3<-glm(all_coping_talkMH.imp~Day, data=pdat28.imp, family=binomial(link="logit"))
+Coping_TalkMH_resid<-as.numeric(rstandard(mod3))
+
+mod4<-glm(all_coping_any.imp~Day, data=pdat28.imp, family=binomial(link="logit"))
+Coping_any_resid<-as.numeric(rstandard(mod4))
+
+mod5<-glm(all_coping_dis_rel_combined.imp~Day, data=pdat28.imp, family=binomial(link="logit"))
+Coping_dis_rel_resid <-as.numeric(rstandard(mod5))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat28.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod7<-glm(all_coping_thinking.imp~Day, data=pdat28.imp, family=binomial(link="logit"))
+Coping_Thinking_resid<-as.numeric(rstandard(mod7))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat28.imp)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod9<-glm(all_coping_talkfriend.imp~Day, data=pdat28.imp, family=binomial(link="logit"))
+Coping_TalkFriend_resid<-as.numeric(rstandard(mod9))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat28.imp)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat28.imp)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat28<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_any_resid, Coping_dis_rel_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+```
+
+## Person 28: Calculating Difference Scores ## 
+
+```{r}
+attach(pdat28)
+Coping_TalkFamily_resid=diff(Coping_TalkFamily_resid)
+Coping_TalkMH_resid = diff(Coping_TalkMH_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_TalkFriend_resid = diff(Coping_TalkFriend_resid)
+Coping_any_resid = diff(Coping_any_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid =  diff(Efficacy_resid)
+Coping_dis_rel_resid = diff(Coping_dis_rel_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+pdat28<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_TalkMH_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_TalkFriend_resid, Coping_any_resid, Coping_dis_rel_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+pdat28$day<-c(1:55)
+```
+
+## Person 28: Same Day of Models of SI Urge Predicting Changes in Coping ## 
+
+```{r}
+pdat28.2<-c("Coping_sum_3avg_resid", "SIUrge_resid")
+pdat28.2<-pdat28[pdat28.2]
+coping_var=VAR(pdat28.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat28.2<-c("Coping_TalkFamily_resid", "SIUrge_resid")
+pdat28.2<-pdat28[pdat28.2]
+coping_var=VAR(pdat28.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat28.2<-c("Coping_TalkMH_resid", "SIUrge_resid")
+pdat28.2<-pdat28[pdat28.2]
+coping_var=VAR(pdat28.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat28.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat28.2<-pdat28[pdat28.2]
+coping_var=VAR(pdat28.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat28.2<-c("Coping_Thinking_resid", "SIUrge_resid")
+pdat28.2<-pdat28[pdat28.2]
+coping_var=VAR(pdat28.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat28.2<-c("Coping_TalkFriend_resid", "SIUrge_resid")
+pdat28.2<-pdat28[pdat28.2]
+coping_var=VAR(pdat28.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat28.2<-c("Coping_dis_rel_resid", "SIUrge_resid")
+pdat28.2<-pdat28[pdat28.2]
+coping_var=VAR(pdat28.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat28.2<-c("Coping_any_resid", "SIUrge_resid")
+pdat28.2<-pdat28[pdat28.2]
+coping_var=VAR(pdat28.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat28.2<-c("Coping_sum_resid", "SIUrge_resid")
+pdat28.2<-pdat28[pdat28.2]
+coping_var=VAR(pdat28.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat28.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat28.2<-pdat28[pdat28.2]
+coping_var=VAR(pdat28.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+```{r}
+df <- pdat28.imp %>%
+  dplyr::select(Day, SIUrge.imp, Self_Efficacy.imp) %>%
+  tidyr::gather(key = "variable", value = "value", -Day)
+
+a<-ggplot(df, aes(x = Day, y = value)) + 
+  geom_line(aes(linetype = variable), size = 1) + labs(y="Value", x = "Day of Study") + theme_bw()
+a<-a+scale_linetype_manual(values=c("dashed", "solid"), name="Variable", labels=c("Self-Efficacy", "Suicidal Urge"))
+
+jpeg("Person 28.SUM.jpeg", res=300, height=6, width=9, units="in")
+a
+dev.off()
+```
+
+# 336 
+
+## Specifying the Data Structure for imputation
+
+```{r}
+MImodel = pdat34[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat34.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat34.1<-pdat34.imp[vars]
+pdat34.2<- do.call(rbind, apply(pdat34.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat34.3<-pdat34.imp[vars]
+pdat34.4 <- do.call(rbind, apply(pdat34.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat34.imp<-cbind(pdat34.4, pdat34.2)
+pdat34.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat34.imp<-data.frame(na.spline(pdat34.imp))
+pdat34.imp<-round(pdat34.imp)
+pdat34.imp$SIUrge.imp[pdat34.imp$SIUrge.imp>7]<-7
+pdat34.imp$SIUrge.imp[pdat34.imp$SIUrge.imp<0]<-0
+pdat34.imp$Self_Efficacy.imp[pdat34.imp$Self_Efficacy.imp>10]<-10
+pdat34.imp$Self_Efficacy.imp[pdat34.imp$Self_Efficacy.imp<0]<-0
+```
+
+
+```{r}
+pdat34.imp <- pdat34.imp %>% 
+     mutate_at(c(cols),list(~recode(., `-3`=0,`-2`=0,`-1`=0,`2`= 1,`3`=1)))
+
+cols <- c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp")
+pdat34.imp[cols] <- lapply(pdat34.imp[cols], factor) 
+```
+
+
+## Comparing pre vs post splines  
+
+```{r}
+a<-ggplot(data = pdat34, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+b<-ggplot(data = pdat34.imp, aes(x = Day, y = SIUrge.imp))+
+  geom_line(color = "#00AFBB", size = 2)
+ggarrange(a, b + rremove("x.text"), 
+          ncol = 1, nrow = 2)
+```
+
+## Extracting standardized residuals
+```{r}
+mod1<-lm(coping_sum_3avg.imp~Day, data=pdat34.imp)
+Coping_sum_3avg_resid = as.numeric(rstandard(mod1))
+
+mod2<-glm(all_coping_talkfamily.imp~Day, data=pdat34.imp, family=binomial(link="logit"))
+Coping_TalkFamily_resid<-as.numeric(rstandard(mod2))
+
+mod3<-glm(all_coping_any.imp~Day, data=pdat34.imp, family=binomial(link="logit"))
+Coping_any_resid<-as.numeric(rstandard(mod3))
+
+mod5<-glm(all_coping_dis_rel_combined.imp~Day, data=pdat34.imp, family=binomial(link="logit"))
+Coping_dis_rel_resid<-as.numeric(rstandard(mod5))
+
+mod6<-glm(all_coping_copingthought.imp~Day, data=pdat34.imp, family=binomial(link="logit"))
+Coping_Thought_resid<-as.numeric(rstandard(mod6))
+
+mod7<-glm(all_coping_thinking.imp~Day, data=pdat34.imp, family=binomial(link="logit"))
+Coping_Thinking_resid<-as.numeric(rstandard(mod7))
+
+mod8<-lm(coping_sum.imp~Day, data=pdat34.imp)
+Coping_sum_resid<-as.numeric(rstandard(mod8))
+
+mod10<-lm(SIUrge.imp~Day, data=pdat34.imp)
+SIUrge_resid<-as.numeric(rstandard(mod10))
+
+mod11<-lm(Self_Efficacy.imp~Day, data=pdat34.imp)
+Efficacy_resid<-as.numeric(rstandard(mod11))
+
+pdat34<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_any_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+```
+
+## Person 34: Calculating Difference Scores ## 
+
+```{r}
+attach(pdat34)
+Coping_TalkFamily_resid = diff(Coping_TalkFamily_resid)
+Coping_dis_rel_resid = diff(Coping_dis_rel_resid)
+Coping_Thought_resid = diff(Coping_Thought_resid)
+Coping_Thinking_resid = diff(Coping_Thinking_resid)
+Coping_any_resid = diff(Coping_any_resid)
+Coping_sum_resid = diff(Coping_sum_resid)
+SIUrge_resid =  diff(SIUrge_resid)
+Efficacy_resid =  diff(Efficacy_resid)
+Coping_sum_3avg_resid = diff(Coping_sum_3avg_resid)
+
+pdat34<-as.data.frame(cbind(Coping_TalkFamily_resid, Coping_dis_rel_resid, Coping_Thought_resid, Coping_Thinking_resid, Coping_any_resid, Coping_sum_resid, SIUrge_resid, Efficacy_resid, Coping_sum_3avg_resid))
+pdat34$day<-c(1:55)
+```
+
+##Person 34: Same Day Models of SI Urge Predicting Changes in Coping ##  
+
+```{r}
+pdat34.2<-c("Coping_sum_3avg_resid", "SIUrge_resid")
+pdat34.2<-pdat34[pdat34.2]
+coping_var=VAR(pdat34.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat34.2<-c("Coping_TalkFamily_resid", "SIUrge_resid")
+pdat34.2<-pdat34[pdat34.2]
+coping_var=VAR(pdat34.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat34.2<-c("Coping_dis_rel_resid", "SIUrge_resid")
+pdat34.2<-pdat34[pdat34.2]
+coping_var=VAR(pdat34.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat34.2<-c("Coping_Thought_resid", "SIUrge_resid")
+pdat34.2<-pdat34[pdat34.2]
+coping_var=VAR(pdat34.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat34.2<-c("Coping_Thinking_resid", "SIUrge_resid")
+pdat34.2<-pdat34[pdat34.2]
+coping_var=VAR(pdat34.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat34.2<-c("Coping_any_resid", "SIUrge_resid")
+pdat34.2<-pdat34[pdat34.2]
+coping_var=VAR(pdat34.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat34.2<-c("Coping_sum_resid", "SIUrge_resid")
+pdat34.2<-pdat34[pdat34.2]
+coping_var=VAR(pdat34.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+
+pdat34.2<-c("Efficacy_resid", "SIUrge_resid")
+pdat34.2<-pdat34[pdat34.2]
+coping_var=VAR(pdat34.2,p=1,  type="const")
+causality(coping_var, cause="SIUrge_resid")$Granger
+summary(coping_var)
+```
+
+# Imputation and splines for people with less than 5 SI observations
+
+## 201
+
+## Specifying the Data Structure for imputation
+
+```{r}
+MImodel = pdat1[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat1.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat1.1<-pdat1.imp[vars]
+pdat1.2<- do.call(rbind, apply(pdat1.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat1.3<-pdat1.imp[vars]
+pdat1.4 <- do.call(rbind, apply(pdat1.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat1.imp<-cbind(pdat1.4, pdat1.2)
+pdat1.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat1.imp<-data.frame(na.spline(pdat1.imp))
+pdat1.imp<-round(pdat1.imp)
+pdat1.imp$SIUrge.imp[pdat1.imp$SIUrge.imp>7]<-7
+pdat1.imp$SIUrge.imp[pdat1.imp$SIUrge.imp<0]<-0
+pdat1.imp$Self_Efficacy.imp[pdat1.imp$Self_Efficacy.imp>10]<-10
+pdat1.imp$Self_Efficacy.imp[pdat1.imp$Self_Efficacy.imp<0]<-0
+```
+
+## 206
+
+## Specifying the Data Structure for imputation
+
+```{r}
+MImodel = pdat6[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat6.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat6.1<-pdat6.imp[vars]
+pdat6.2<- do.call(rbind, apply(pdat6.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat6.3<-pdat6.imp[vars]
+pdat6.4 <- do.call(rbind, apply(pdat6.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat6.imp<-cbind(pdat6.4, pdat6.2)
+pdat6.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat6.imp<-data.frame(na.spline(pdat6.imp))
+pdat6.imp<-round(pdat6.imp)
+pdat6.imp$SIUrge.imp[pdat6.imp$SIUrge.imp>7]<-7
+pdat6.imp$SIUrge.imp[pdat6.imp$SIUrge.imp<0]<-0
+pdat6.imp$Self_Efficacy.imp[pdat6.imp$Self_Efficacy.imp>10]<-10
+pdat6.imp$Self_Efficacy.imp[pdat6.imp$Self_Efficacy.imp<0]<-0
+```
+
+## 209 (pdat8)
+
+## Specifying the Data Structure for imputation
+
+```{r}
+MImodel = pdat8[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat8.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat8.1<-pdat8.imp[vars]
+pdat8.2<- do.call(rbind, apply(pdat8.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat8.3<-pdat8.imp[vars]
+pdat8.4 <- do.call(rbind, apply(pdat8.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat8.imp<-cbind(pdat8.4, pdat8.2)
+pdat8.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat8.imp<-data.frame(na.spline(pdat8.imp))
+pdat8.imp<-round(pdat8.imp)
+pdat8.imp$SIUrge.imp[pdat8.imp$SIUrge.imp>7]<-7
+pdat8.imp$SIUrge.imp[pdat8.imp$SIUrge.imp<0]<-0
+pdat8.imp$Self_Efficacy.imp[pdat8.imp$Self_Efficacy.imp>10]<-10
+pdat8.imp$Self_Efficacy.imp[pdat8.imp$Self_Efficacy.imp<0]<-0
+```
+
+## 211 (pdat 10)
+
+## Specifying the Data Structure for imputation
+
+```{r}
+MImodel = pdat10[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat10.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat10.1<-pdat10.imp[vars]
+pdat10.2<- do.call(rbind, apply(pdat10.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat10.3<-pdat10.imp[vars]
+pdat10.4 <- do.call(rbind, apply(pdat10.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat10.imp<-cbind(pdat10.4, pdat10.2)
+pdat10.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat10.imp<-data.frame(na.spline(pdat10.imp))
+pdat10.imp<-round(pdat10.imp)
+pdat10.imp$SIUrge.imp[pdat10.imp$SIUrge.imp>7]<-7
+pdat10.imp$SIUrge.imp[pdat10.imp$SIUrge.imp<0]<-0
+pdat10.imp$Self_Efficacy.imp[pdat10.imp$Self_Efficacy.imp>10]<-10
+pdat10.imp$Self_Efficacy.imp[pdat10.imp$Self_Efficacy.imp<0]<-0
+```
+
+## 220 (pdat18)
+
+## Specifying the Data Structure for imputation
+
+```{r}
+MImodel = pdat18[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat18.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat18.1<-pdat18.imp[vars]
+pdat18.2<- do.call(rbind, apply(pdat18.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat18.3<-pdat18.imp[vars]
+pdat18.4 <- do.call(rbind, apply(pdat18.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat18.imp<-cbind(pdat18.4, pdat18.2)
+pdat18.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat18.imp<-data.frame(na.spline(pdat18.imp))
+pdat18.imp<-round(pdat18.imp)
+pdat18.imp$SIUrge.imp[pdat18.imp$SIUrge.imp>7]<-7
+pdat18.imp$SIUrge.imp[pdat18.imp$SIUrge.imp<0]<-0
+pdat18.imp$Self_Efficacy.imp[pdat18.imp$Self_Efficacy.imp>10]<-10
+pdat18.imp$Self_Efficacy.imp[pdat18.imp$Self_Efficacy.imp<0]<-0
+```
+
+## 226 (pdat24)
+
+## Specifying the Data Structure for imputation
+
+```{r}
+MImodel = pdat24[c(-1,-2, -7, -20)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.numeric(MImodel[,7])
+MImodel[,8] = as.numeric(MImodel[,8])
+MImodel[,9] = as.factor(MImodel[,9])
+MImodel[,10] = as.numeric(MImodel[,10])
+MImodel[,11] = as.numeric(MImodel[,11])
+MImodel[,12] = as.numeric(MImodel[,12])
+MImodel[,13] = as.factor(MImodel[,13])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.numeric(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,21] = as.numeric(MImodel[,21])
+MImodel[,22] = as.numeric(MImodel[,22])
+```
+
+```{r}
+m = 5
+imp = mice(MImodel, m = m)
+
+k=22
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+coping_sum.imp = data.impute[,7]
+coping_sum_3avg.imp  = data.impute[,8]
+all_coping_any.imp = as.factor(data.impute[,9])
+SIUrge.imp  = data.impute[,10]
+Self_Efficacy.imp = data.impute[,11]
+
+pdat24.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat24.1<-pdat24.imp[vars]
+pdat24.2<- do.call(rbind, apply(pdat24.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat24.3<-pdat24.imp[vars]
+pdat24.4 <- do.call(rbind, apply(pdat24.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat24.imp<-cbind(pdat24.4, pdat24.2)
+pdat24.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat24.imp<-data.frame(na.spline(pdat24.imp))
+pdat24.imp<-round(pdat24.imp)
+pdat24.imp$SIUrge.imp[pdat24.imp$SIUrge.imp>7]<-7
+pdat24.imp$SIUrge.imp[pdat24.imp$SIUrge.imp<0]<-0
+pdat24.imp$Self_Efficacy.imp[pdat24.imp$Self_Efficacy.imp>10]<-10
+pdat24.imp$Self_Efficacy.imp[pdat24.imp$Self_Efficacy.imp<0]<-0
+```
+
+## 229 (pdat27)
+
+## Specifying the Data Structure for imputation
+
+```{r}
+MImodel = pdat27[c(-1,-2)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.factor(MImodel[,7])
+MImodel[,10] = as.factor(MImodel[,10])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.factor(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,22] = as.factor(MImodel[,22])
+```
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=24
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+all_coping_crisisline.imp  = as.factor(data.impute[,7])
+coping_sum.imp = data.impute[,8]
+coping_sum_3avg.imp  = data.impute[,9]
+all_coping_any.imp = as.factor(data.impute[,10])
+SIUrge.imp  = data.impute[,11]
+Self_Efficacy.imp = data.impute[,12]
+
+pdat27.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat27.1<-pdat27.imp[vars]
+pdat27.2<- do.call(rbind, apply(pdat27.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat27.3<-pdat27.imp[vars]
+pdat27.4 <- do.call(rbind, apply(pdat27.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat27.imp<-cbind(pdat27.4, pdat27.2)
+pdat27.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat27.imp<-data.frame(na.spline(pdat27.imp))
+pdat27.imp<-round(pdat27.imp)
+pdat27.imp$SIUrge.imp[pdat27.imp$SIUrge.imp>7]<-7
+pdat27.imp$SIUrge.imp[pdat27.imp$SIUrge.imp<0]<-0
+pdat27.imp$Self_Efficacy.imp[pdat27.imp$Self_Efficacy.imp>10]<-10
+pdat27.imp$Self_Efficacy.imp[pdat27.imp$Self_Efficacy.imp<0]<-0
+```
+
+## 233 (pdat31)
+
+## Specifying the Data Structure for imputation
+
+```{r}
+MImodel = pdat31[c(-1,-2, -7, -20)]
+MImodel[,1] = as.factor(MImodel[,1]) 
+MImodel[,2] = as.factor(MImodel[,2])
+MImodel[,3] = as.factor(MImodel[,3])
+MImodel[,4] = as.factor(MImodel[,4])
+MImodel[,5] = as.factor(MImodel[,5])
+MImodel[,6] = as.factor(MImodel[,6])
+MImodel[,7] = as.numeric(MImodel[,7])
+MImodel[,8] = as.numeric(MImodel[,8])
+MImodel[,9] = as.factor(MImodel[,9])
+MImodel[,10] = as.numeric(MImodel[,10])
+MImodel[,11] = as.numeric(MImodel[,11])
+MImodel[,12] = as.numeric(MImodel[,12])
+MImodel[,13] = as.factor(MImodel[,13])
+MImodel[,14] = as.factor(MImodel[,14])
+MImodel[,15] = as.factor(MImodel[,15])
+MImodel[,16] = as.factor(MImodel[,16])
+MImodel[,17] = as.factor(MImodel[,17])
+MImodel[,18] = as.factor(MImodel[,18])
+MImodel[,19] = as.numeric(MImodel[,19])
+MImodel[,20] = as.factor(MImodel[,20])
+MImodel[,21] = as.numeric(MImodel[,21])
+MImodel[,22] = as.numeric(MImodel[,22])
+```
+
+```{r}
+m = 5
+imp = mice(MImodel,m = m)
+
+k=22
+
+qhat = matrix(NA, nrow = m,ncol = k)
+
+u = array(NA,dim = c(k,k,m))
+
+for (i in 1:m) {
+data.impute = mice::complete(imp,action = i)}
+
+all_coping_talkfamily.imp = as.factor(data.impute[,1])
+all_coping_talkMH.imp = as.factor(data.impute[,2])
+all_coping_copingthought.imp = as.factor(data.impute[,3])
+all_coping_thinking.imp = as.factor(data.impute[,4])
+all_coping_talkfriend.imp = as.factor(data.impute[,5])
+all_coping_dis_rel_combined.imp = as.factor(data.impute[,6])
+coping_sum.imp = data.impute[,7]
+coping_sum_3avg.imp  = data.impute[,8]
+all_coping_any.imp = as.factor(data.impute[,9])
+SIUrge.imp  = data.impute[,10]
+Self_Efficacy.imp = data.impute[,11]
+
+pdat31.imp<-data.frame(all_coping_talkfamily.imp = all_coping_talkfamily.imp,
+                      all_coping_talkMH.imp = all_coping_talkMH.imp, 
+                      all_coping_crisisline.imp = all_coping_crisisline.imp,
+                      all_coping_copingthought.imp = all_coping_copingthought.imp,
+                      all_coping_thinking.imp = all_coping_thinking.imp, 
+                      all_coping_talkfriend.imp =  all_coping_talkfriend.imp,
+                      all_coping_dis_rel_combined.imp = all_coping_dis_rel_combined.imp,
+                      all_coping_any.imp = all_coping_any.imp, 
+                      SIUrge.imp = SIUrge.imp,
+                      Self_Efficacy.imp = Self_Efficacy.imp, 
+                      coping_sum_3avg.imp = coping_sum_3avg.imp, 
+                      coping_sum.imp = coping_sum.imp)
+```
+
+## Restructuring Data file to create splines 
+
+```{r}
+na.df <- data.frame(SIUrge.imp = NA)
+vars<-c("SIUrge.imp")
+pdat31.1<-pdat31.imp[vars]
+pdat31.2<- do.call(rbind, apply(pdat31.1, 1, function(x) {rbind(x, na.df)}))
+
+na.df <- data.frame(all_coping_talkfamily.imp = NA, 
+        all_coping_talkMH.imp = NA, 
+        all_coping_copingthought.imp = NA,
+        all_coping_thinking.imp = NA,
+        all_coping_talkfriend.imp = NA,
+        all_coping_dis_rel_combined.imp = NA,
+        all_coping_any.imp = NA, 
+        Self_Efficacy.imp = NA,
+        coping_sum.imp = NA,
+        coping_sum_3avg.imp = NA)
+
+vars<-c("all_coping_talkfamily.imp", 
+        "all_coping_talkMH.imp", 
+        "all_coping_copingthought.imp",
+        "all_coping_thinking.imp",
+        "all_coping_talkfriend.imp",
+        "all_coping_dis_rel_combined.imp",
+        "all_coping_any.imp",
+        "Self_Efficacy.imp",
+        "coping_sum.imp",
+        "coping_sum_3avg.imp")
+pdat31.3<-pdat31.imp[vars]
+pdat31.4 <- do.call(rbind, apply(pdat31.3, 1, function(x) {rbind(na.df, x)}))
+
+pdat31.imp<-cbind(pdat31.4, pdat31.2)
+pdat31.imp$Day<-c(1:56)
+```
+
+## Creating splines 
+```{r}
+pdat31.imp<-data.frame(na.spline(pdat31.imp))
+pdat31.imp<-round(pdat31.imp)
+pdat31.imp$SIUrge.imp[pdat31.imp$SIUrge.imp>7]<-7
+pdat31.imp$SIUrge.imp[pdat31.imp$SIUrge.imp<0]<-0
+pdat31.imp$Self_Efficacy.imp[pdat31.imp$Self_Efficacy.imp>10]<-10
+pdat31.imp$Self_Efficacy.imp[pdat31.imp$Self_Efficacy.imp<0]<-0
+```
+
+## Plotting SI urge over time by whether or not data was analyzed
+
+```{r}
+vars<-c("Day", "SIUrge.imp")
+pdat1.imp<-pdat1.imp[vars]
+pdat1.imp$ID<-rep(201, times=56)
+
+pdat2.imp<-pdat2.imp[vars]
+pdat2.imp$ID<-rep(202, times=56)
+
+pdat4.imp<-pdat4.imp[vars]
+pdat4.imp$ID<-rep(204, times=56)
+
+pdat5.imp<-pdat5.imp[vars]
+pdat5.imp$Day<-c(1:56)
+pdat5.imp$ID<-rep(205, times=56)
+
+pdat6.imp<-pdat6.imp[vars]
+pdat6.imp$ID<-rep(206, times=56)
+
+pdat7.imp<-pdat7.imp[vars]
+pdat7.imp$ID<-rep(207, times=56)
+
+pdat8.imp<-pdat8.imp[vars]
+pdat8.imp$ID<-rep(209, times=56)
+
+pdat10.imp<-pdat10.imp[vars]
+pdat10.imp$ID<-rep(211, times=56)
+
+pdat11.imp<-pdat11.imp[vars]
+pdat11.imp$ID<-rep(212, times=56)
+
+pdat13.imp<-pdat13.imp[vars]
+pdat13.imp$ID<-rep(214, times=56)
+
+pdat18.imp<-pdat18.imp[vars]
+pdat18.imp$ID<-rep(220, times=56)
+
+pdat20.imp<-pdat20.imp[vars]
+pdat20.imp$ID<-rep(222, times=56)
+
+pdat21.imp<-pdat21.imp[vars]
+pdat21.imp$ID<-rep(223, times=56)
+
+pdat23.imp<-pdat23.imp[vars]
+pdat23.imp$ID<-rep(225, times=56)
+
+pdat24.imp<-pdat24.imp[vars]
+pdat24.imp$ID<-rep(226, times=56)
+
+pdat27.imp<-pdat27.imp[vars]
+pdat27.imp$ID<-rep(229, times=56)
+
+pdat28.imp<-pdat28.imp[vars]
+pdat28.imp$ID<-rep(230, times=56)
+
+pdat31.imp<-pdat31.imp[vars]
+pdat31.imp$ID<-rep(233, times=56)
+
+pdat34.imp<-pdat34.imp[vars]
+pdat34.imp$ID<-rep(236, times=56)
+
+data=rbind(pdat1.imp,pdat2.imp,pdat4.imp,pdat5.imp,pdat6.imp,pdat7.imp,pdat8.imp,pdat10.imp,pdat11.imp,pdat13.imp,pdat18.imp,pdat20.imp,pdat21.imp,pdat23.imp,pdat24.imp,pdat27.imp,pdat28.imp,pdat31.imp,pdat34.imp)
+
+data_bg=data.frame("ID" = unique(data$ID), "group"=c(0,1,1,1,0,0,1,0,1,1,0,0,0,1,0,1,1,0,1))
+
+ID_names <- c(
+  '201'="XX1",
+  '202'="001",
+  '204'="002",
+  '205'="003",
+  '206'="XX2",
+  '207'="XX3",
+  '209'="004",
+  '211'="XX4",
+  '212'="005",
+  '214'="006",
+  '220'="XX5",
+  '222'="XX6",
+  '223'="007",
+  '225'="008",
+  '226'="XX7",
+  '229'="009",
+  '230'="010",
+  '233'="XX8",
+  '236'="011"
+)
+
+zp <- ggplot(data, aes(x = Day, y = SIUrge.imp)) + geom_line(data = data, aes(x = Day, y = SIUrge.imp, group = ID), alpha = 1/2, size = 1/2) + geom_line(size = 1) + facet_wrap(~ID, labeller=labeller(ID=ID_names)) + ylim(0,8) + labs (y = "Suicidal Urge", x = "Day of Study") + theme_bw() + geom_rect(data=data_bg, aes(fill = as.factor(group)), inherit.aes = F, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, alpha = 0.5) + scale_fill_grey(name = "SI Group", labels = c("< 5 obs", "> 5 obs"))
+
+table(data$SIUrge.imp>0, data$ID)
+ 
+jpeg("SI group.jpeg", res=300, height=6, width=9, units="in")
+zp
+dev.off()
+```

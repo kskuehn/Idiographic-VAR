@@ -18,14 +18,14 @@ This R command splits the stacked data file into person-specific models.
 ## Imputation and Preprocessing R code
 Imputation and preprocessing.R
 
-This R script walks you through imputation, creating splines, and residualizing time effects and calculating difference scores so that the VAR model can be run. This is done for just one person (Person 2) but is repeated for all individuals in your data set (in this case, Person 1 through Person 11). 
+This R script walks you through imputation, creating splines, and residualizing time effects and calculating difference scores so that the VAR model can be run. This is done for just one person (Person 1) but is repeated for all individuals in your data set (in this case, Person 1 through Person 11). 
 
 ## Individual data files
 pdat2.csv
 This data file is a random data file. This is meant to be used for imputation and preprocessing (Imputation and preprocessing.R) to set up the VAR model
 
 pdat2.var.csv
-This data file is randomly generated based on coefficients from Granger Causality Test of Person 2's VAR model between suicidal urges and whether or not they reached out to family (variables are residualized so continous in nature). 
+This data file is randomly generated based on coefficients from Granger Causality Test of Person 1's VAR model between suicidal urges and whether or not they reached out to family (variables are residualized so continous in nature). 
 
 ## Grander Causality/VAR Scripts
 granger.var.R

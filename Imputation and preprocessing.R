@@ -4,9 +4,12 @@
 library(DataCombine)
 library(mice)
 library(zoo)
+library(dplyr)
 
 ## Load Data
 pdat2<-read.csv("~/pdat2.csv")
+
+pdat2=pdat2[c(-1,-2)]
 
 ## Specify data structure for imputation
 MImodel = pdat2[c(-1,-2)]
@@ -180,4 +183,4 @@ pdat2<-as.data.frame(cbind(Coping_TalkFamily_resid,
                            Coping_TalkFriend_resid, Coping_sum_resid, 
                            Efficacy_resid, SIUrge_resid, Coping_sum_3avg_resid))
 
-pdat2$day<-c(1:55)
+pdat2$day<-c(1:111)

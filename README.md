@@ -27,7 +27,7 @@ This data file is a random data file. This is meant to be used for imputation an
 pdat2.var.csv
 This data file is randomly generated based on coefficients from Granger Causality Test of Person 1's VAR model between suicidal urges and whether or not they reached out to family (variables are residualized so continous in nature). 
 
-## Grander Causality/VAR Scripts
+## Granger Causality/VAR Scripts
 granger.var.R
 
 This R script provides code to run a VAR model with Granger Causality test. Designed to be used with the pdat2.var.csv data file. 

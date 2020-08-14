@@ -4,11 +4,7 @@
 
 # Contents:
 ## Analysis Scripts
-<<<<<<< HEAD
-VAR.html: Accessible via https://kskuehn.github.io/Idiographic-VAR/VAR.html
-=======
 VAR.html: https://kskuehn.github.io/Idiographic-VAR/VAR.html 
->>>>>>> 451564a573e7d2d9961e3b5e5867a883b070de32
 
 ## Random Data set (all 34 participants)
 full.random.csv

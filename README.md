@@ -1,4 +1,4 @@
-# Kuehn, Foster, Czyz, & King - Supplemental Information for Psych Med
+# Kuehn, Foster, Czyz, & King - Supplemental Information
 
 # Note: Because random data was generated (to ensure complete confidentiality of research participants), output from these R scripts and data files will vary in likely substantial ways between this tutorial and the results reported in the paper. The purpose of this tutorial is intended to provide you with R scripts for splitting a stacked data file, running imputation, creating splines, and generating residualized variables to then run Granger Causality VAR models. For output based on the anonymized observed data file click here: https://kskuehn.github.io/Idiographic-VAR/VAR.html
 
